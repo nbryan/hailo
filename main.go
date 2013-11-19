@@ -19,11 +19,13 @@ func main() {
     tubeStations = LoadTubeStations()
 
     ids := []int{5937, 6043}
-    done := make(chan int)
+    report, done := make(chan string), make(chan int)
 
     for _, id := range ids {
-        go Dispatch(Robot{id, LatLong{0, 0}}, done)
+        go Dispatch(Robot{id, LatLong{0, 0}}, report, done)
     }
+
+    go PrintReports(report)
 
     for i := len(ids); i > 0; {
         <-done
@@ -31,21 +33,23 @@ func main() {
     }
 }
 
-func Dispatch(r Robot, done chan int) {
-    fmt.Println("Dispatch")
+func Dispatch(r Robot, report chan string, done chan int) {
     ch := make(chan Instruction, 10) // Only allow 10 instructions in queue at a time
     go ReadInstructions(r.ID, ch)
 
     for instruction := range ch {
-        r.ReceiveInstruction(instruction)
-        fmt.Println(r.ID, instruction)
+        hour, min, _ := instruction.Time.Clock()
+        if hour < 8 || (hour == 8 && min < 10) { // End at 8:10
+            r.Instruct(instruction, report)
+        } else {
+            break
+        }
     }
 
     done <- 1
 }
 
 func ReadInstructions(id int, ch chan Instruction) {
-    fmt.Println("ReadInstructions")
     file, _ := os.Open(fmt.Sprintf("%v.csv", id))
     defer file.Close()
 
@@ -65,4 +69,10 @@ func ReadInstructions(id int, ch chan Instruction) {
     }
 
     close(ch)
+}
+
+func PrintReports(report chan string) {
+    for {
+        fmt.Println(<-report)
+    }
 }
